@@ -2,13 +2,23 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { ActivitySheet } from './ActivitySheet';
 import { Avatar } from './Avatar';
-import { Calendar, Check, ChevronLeft, Send, Users } from './icons';
+import { Calendar, Check, ChevronLeft, Send, Spark, Users } from './icons';
 import { MembersSheet } from './MembersSheet';
 import { PlanSheet } from './PlanSheet';
 import { dayKey, formatClock, formatDayLabel, formatEventChip, relativeEvent } from '@/lib/format';
 import { mergeMessages, type LocalMessage } from '@/lib/messages';
-import type { ChatMessage, GroupRole, GroupSnapshot, Member, Plan, SyncPayload } from '@/lib/types';
+import type {
+  ChatMessage,
+  GroupRole,
+  GroupSnapshot,
+  GroupVisibility,
+  Member,
+  Plan,
+  SharedGoal,
+  SyncPayload,
+} from '@/lib/types';
 
 const POLL_MS = 2000;
 
@@ -19,7 +29,10 @@ export function ChatRoom({ me, group }: { me: { id: string; username: string }; 
   const [members, setMembers] = useState<Member[]>(group.members);
   const [role, setRole] = useState<GroupRole>(group.role);
   const [inviteCode, setInviteCode] = useState(group.inviteCode);
-  const [sheet, setSheet] = useState<'plan' | 'members' | null>(null);
+  const [visibility, setVisibility] = useState<GroupVisibility>(group.visibility);
+  const [activity, setActivity] = useState<SharedGoal | null>(group.activity);
+  const [blockedIds, setBlockedIds] = useState<string[]>(group.blockedIds);
+  const [sheet, setSheet] = useState<'plan' | 'members' | 'activity' | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -41,7 +54,7 @@ export function ChatRoom({ me, group }: { me: { id: string; username: string }; 
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // Poll for other people's messages and plan changes.
+  // Poll for other people's messages, the plan, the goal, and blocks.
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -67,6 +80,8 @@ export function ChatRoom({ me, group }: { me: { id: string; username: string }; 
               lastSeqRef.current = Math.max(lastSeqRef.current, data.lastSeq);
               setPlan(data.plan);
               setMembers(data.members);
+              setActivity(data.activity);
+              setBlockedIds(data.blockedIds);
               setRole(data.role);
             } else {
               setConnection('offline');
@@ -170,14 +185,20 @@ export function ChatRoom({ me, group }: { me: { id: string; username: string }; 
 
   const leader = [...plan.venues].sort((a, b) => b.voters.length - a.voters.length)[0] ?? null;
   const goingCount = plan.rsvps.filter((rsvp) => rsvp.status === 'yes').length;
+  const players = activity?.crew.filter((member) => member.isMember).length ?? 0;
 
-  const hasUserMessages = messages.some((message) => message.kind === 'user');
+  // Blocking hides a person's messages immediately; the server filters them on
+  // the next poll too, but the already-loaded page must not keep showing them.
+  const visibleMessages = messages.filter(
+    (message) => !message.authorId || !blockedIds.includes(message.authorId),
+  );
+  const hasUserMessages = visibleMessages.some((message) => message.kind === 'user');
 
   const rows: React.ReactNode[] = [];
   let lastDay = '';
   let lastAuthor: string | null = null;
 
-  messages.forEach((message) => {
+  visibleMessages.forEach((message) => {
     const key = dayKey(message.createdAt);
     if (key !== lastDay) {
       rows.push(
@@ -245,6 +266,7 @@ export function ChatRoom({ me, group }: { me: { id: string; username: string }; 
             <span className={`dot${connection === 'live' ? ' is-live' : ''}`} />
             {members.length} {members.length === 1 ? 'member' : 'members'}
             {plan.eventAt ? ` · ${relativeEvent(plan.eventAt)}` : ''}
+            {visibility === 'discoverable' ? ' · open' : ''}
           </p>
         </div>
         <button type="button" className="icon-btn" onClick={() => setSheet('plan')} aria-label="Party plan">
@@ -276,6 +298,23 @@ export function ChatRoom({ me, group }: { me: { id: string; username: string }; 
           </span>
         </span>
         <span className="plan-strip__cta">{plan.finalizedAt ? 'Locked' : 'Open plan'}</span>
+      </button>
+
+      <button type="button" className="goal-strip" onClick={() => setSheet('activity')}>
+        <span className="goal-strip__left">
+          <span className="goal-strip__icon">
+            <Spark size={16} />
+          </span>
+          <span className="goal-strip__text">
+            <span className="goal-strip__title">{activity ? activity.title : 'Start a shared goal'}</span>
+            <span className="goal-strip__sub">
+              {activity
+                ? `${activity.progress} / ${activity.goal} points · ${players} playing`
+                : 'Pick a story, pool fictional points, reach the goal'}
+            </span>
+          </span>
+        </span>
+        <span className="goal-strip__cta">{activity ? 'Open' : 'Start'}</span>
       </button>
 
       <div className="messages" ref={listRef} onScroll={handleScroll}>
@@ -344,6 +383,19 @@ export function ChatRoom({ me, group }: { me: { id: string; username: string }; 
         />
       ) : null}
 
+      {sheet === 'activity' ? (
+        <ActivitySheet
+          groupId={group.id}
+          meId={me.id}
+          role={role}
+          members={members}
+          initialActivity={activity}
+          onActivity={setActivity}
+          onClose={() => setSheet(null)}
+          onError={setToast}
+        />
+      ) : null}
+
       {sheet === 'members' ? (
         <MembersSheet
           groupId={group.id}
@@ -351,10 +403,18 @@ export function ChatRoom({ me, group }: { me: { id: string; username: string }; 
           role={role}
           members={members}
           inviteCode={inviteCode}
+          visibility={visibility}
+          blockedIds={blockedIds}
           onMembers={setMembers}
-          onCode={setInviteCode}
+          onCode={(next) => {
+            setInviteCode(next);
+            router.refresh();
+          }}
+          onVisibility={setVisibility}
+          onBlockedChange={setBlockedIds}
           onClose={() => setSheet(null)}
           onError={setToast}
+          onNotice={setToast}
         />
       ) : null}
     </div>

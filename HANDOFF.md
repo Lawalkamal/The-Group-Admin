@@ -1,149 +1,165 @@
 # Where this stands, and what you need to do
 
-The invite-only group MVP is built and passing every check. This file explains what exists
-right now, what was proven, and the exact steps on **your** end — from running it locally to
-putting it in front of your invited testers.
+Milestone three is built and passing every local check. This file explains what changed,
+what was proven, what decisions were made, and the exact steps on **your** end.
 
 ---
 
-## 1. What the app is now
+## 1. What this milestone changed
 
-Milestone two replaced the single-player prototype with a real multi-user product:
+The visual design, mobile shell, auth, invite codes, free-text chat and party plan are all
+unchanged. The app now supports more than party planning:
 
-- **Accounts** — username + password (no email needed). Passwords are salted PBKDF2 hashes;
-  sessions live only in an `HttpOnly` cookie.
-- **Groups** — anyone can create one; the creator is the admin.
-- **Invite codes** — every group has an 8-character code plus a `/join/<code>` link. Anyone
-  holding it joins instantly. The admin can rotate the code (killing the old one) or remove people.
-- **Chat** — messages plus system events, refreshed every 2 seconds by polling, paused when
-  the tab is hidden.
-- **One party plan per group** — admin sets date + budget, everyone proposes venues, votes,
-  RSVPs, and the admin locks it when the group decides.
-- **Server + database** — Next.js 16 (App Router) with a Postgres database. Locally that's an
-  embedded Postgres so you install nothing; in production it's any standard Postgres
-  (Neon free tier is the intended target).
+- **Invite-only is still the default.** Every group keeps its eight-character code and
+  `/join/<code>` link.
+- **Discoverable communities + Explore.** A group's admin can switch it to discoverable from
+  People → Community. It then appears in the new **Explore** area, where any signed-in player
+  can join without a code. The admin can switch it back to invite-only at any time.
+- **Shared Goal**, a fictional non-party activity started from the chat:
+  - Pick one of four scenarios (night market, road trip, neighbourhood festival, pop-up shop).
+  - Pick a point goal: 50, 100 or 200.
+  - Members take actions once each and cheer the action the group should take next.
+  - Progress, each person's points/moves, the group's pick, and a short outcome are shown.
+  - Finishing the goal moves it to the group's history; the admin or creator can also close
+    an unfinished goal early.
+  - **All points are fictional.** There is no money, token, wallet, cash-out, purchase, prize,
+    or real-world value. Cheering is free.
+- **Safety controls.** Members can report or block another member from the People sheet.
+  Reports are visible only to the group admin; blocking hides that person's chat messages
+  from the blocker. Admin removal already existed and still revokes access immediately.
+- **Two consistency fixes:**
+  - Every group card now shows the invite code fetched for that group, and the list refreshes
+    after a rotation. The code on the card and the code in People & Invite always come from
+    the same record.
+  - Removal now clears that person's current RSVP and venue votes, and the plan query also
+    filters them out defensively. Past messages and shared-goal contributions remain as
+    group history.
 
-The old single-player game is deleted — that was your instruction.
+Database changes are **additive only**: two new columns on `groups` plus new activity,
+contribution, cheer, report and block tables. Existing accounts, groups, messages and plans
+are untouched. No reseed or reset was run.
 
-## 2. What was verified (so you don't have to guess)
+## 2. What was verified
 
 | Check | Result |
 |---|---|
-| `npm run check` (TypeScript + 29 unit tests) | ✅ exit 0, 29/29 |
-| `npm run test:e2e` (three real accounts over HTTP) | ✅ 32/32 |
-| `npm run build` | ✅ exit 0 |
-| Two accounts in a real browser (desktop 1500×1040, mobile 430×932) | ✅ messages flow both ways, console clean |
-| Kill the app **and** the database, restart, log back in | ✅ group and messages still there |
-| Non-member probing a group | ✅ gets `404`, can't tell it exists |
-| Rotating an invite code | ✅ old code dies immediately |
+| `npm run check` (TypeScript + 39 unit tests) | ✅ exit 0, 39/39 |
+| `npm run test:e2e` (three accounts over real HTTP) | ✅ **73/73 checks passed** |
+| `npm run build` | ✅ exit 0, all routes generated |
+| Real browser, 1500×1040 and 430×932 | ✅ new screens render, console clean |
+| Discoverable group appears in Explore, invites stay hidden | ✅ |
+| Join an open community without a code | ✅ |
+| Non-admin cannot change visibility or read reports | ✅ |
+| Report → admin sees it → mark handled | ✅ |
+| Block hides messages; unblock restores them | ✅ |
+| Shared goal: start, contribute, cheer, complete, history, close early | ✅ |
+| Removal clears RSVP and venue votes | ✅ |
+| Invite code on card matches People & Invite, including after rotation | ✅ |
+| Existing database upgraded in place (the checks ran against it) | ✅ |
 
-Last run of all three checks after the final edits: passing as of today.
+The e2e run covers the whole flow, including the two bugs you reported. Its final cleanup
+switches its own discoverable test group back to invite-only so it does not linger in Explore.
 
-Screenshots of the real UI are in [`screenshots/`](screenshots/) — start with
-[`07-two-accounts.png`](screenshots/07-two-accounts.png) (two accounts in one group) and
-[`03-plan.png`](screenshots/03-plan.png) (the party plan).
+Screenshots of the real UI are in [`screenshots/`](screenshots/). The most useful ones:
 
----
+- [`13-chat.png`](screenshots/13-chat.png) — chat with both the party plan and shared goal strips
+- [`14-activity.png`](screenshots/14-activity.png) — shared goal progress, actions and cheers
+- [`16-explore.png`](screenshots/16-explore.png) — Explore
+- [`15-people.png`](screenshots/15-people.png) — community settings, reports and member actions
+- [`19-start-goal.png`](screenshots/19-start-goal.png) — starting a goal (unreachable targets disabled)
 
 ## 3. What you need to do
 
-### A. Run it on your machine (do this first)
+### A. Run it locally
 
 ```bash
 npm run dev
 ```
 
-That one command starts the embedded Postgres **and** the app. Open
-<http://localhost:3000>.
+That starts the embedded Postgres and the app at <http://localhost:3000>. **Do not reset the
+database.** The first request adds the new columns/tables in place; your existing accounts,
+groups and plans keep working.
 
-- **First account you create claims the seeded demo group**, so you land in a group that
-  already has history and an invite code. That's intentional.
-- Any account after that starts empty — sign up a second time in a different browser or an
-  incognito window to see the "create a group" path and to test chatting between two people.
-- Data lives in `.data/` and survives restarts. `npm run db:reset` wipes it clean if you
-  want a fresh start.
+Try this flow:
 
-Try this flow: create account → copy the invite code → open an incognito window → create a
-second account → paste the code → say something in each window and watch it appear in the other.
+1. Sign in with an existing account (or create one).
+2. Open a group → People → Community → switch it to **Discoverable**.
+3. Open a second browser/incognito window, sign in as someone else, and go to **Explore**
+   from the home screen. The group should be there; join it without a code.
+4. In the group chat, tap **Start a shared goal**, pick a scenario and a reachable target,
+   then take an action or cheer one. Open a second account to see the progress update.
+5. From People, use the `⋯` menu on a member to report or block them. The admin sees reports
+   in the same sheet.
+6. Remove a member and check the plan's RSVP list: they no longer appear. Their old messages
+   stay in the chat.
 
-### B. Put it online for your invited testers
+### B. Deploy
 
-You told me the folder is not a git repository, so **nothing has been committed or pushed** —
-this step is entirely yours because it involves your accounts.
+There are **no new environment variables or services**. The existing Neon + Vercel setup is
+unchanged:
 
-1. **Make a git repo and push it** (GitHub is fine):
-   ```bash
-   git init
-   git add .
-   git commit -m "Invite-only group MVP"
-   git remote add origin <your-repo-url>
-   git push -u origin main
-   ```
-   `.gitignore` already excludes `.data/`, `node_modules/`, `.env*` and build output, so no
-   secrets or local data go up.
+1. Push this version to your repository.
+2. Let Vercel redeploy, or trigger a redeploy manually.
+3. `DATABASE_URL` stays exactly as it is.
+4. On the first request after deploy, the additive schema changes run automatically.
 
-2. **Create a Postgres database.** [Neon](https://neon.tech) free tier is the target — create
-   a project and copy the **pooled** connection string (it looks like
-   `postgresql://user:...@host/db?sslmode=require`).
+Before deploying against a database you care about, take a Neon branch or backup — not because
+this change deletes data (it does not), but because schema changes on a live database should
+always have a rollback point. **Do not run `npm run db:reset` against production.**
 
-3. **Import the repo into [Vercel](https://vercel.com).** Build command stays `npm run build`;
-   no other configuration.
-
-4. **Add one environment variable** in Vercel → Project → Settings → Environment Variables:
-   - `DATABASE_URL` = the pooled Neon string from step 2.
-
-5. **Deploy.** Tables create themselves on the first request — there is no migration step to run.
-
-6. **Share the invite.** Sign up as the admin, create the group, send people the 8-character
-   code or the `/join/<code>` link. That link is all a tester needs.
-
-Also copy [`.env.example`](.env.example) to `.env.local` only if you want to point `npm run dev`
-at an external database instead of the embedded one — otherwise you can ignore it.
+If you have not deployed yet, the full sequence remains: git repo → Neon database (copy the
+pooled connection string) → import to Vercel → add `DATABASE_URL` → deploy.
 
 ### C. Test on a phone
 
-Below 700px the phone frame disappears and the app fills the screen with safe-area insets, so
-it behaves like a real iOS/Android app. On desktop it renders inside an iPhone 14 Pro Max shell.
+Below 700px the iPhone frame disappears and the app fills the screen with safe-area insets.
+The new Explore and goal sheets are designed at that width too.
 
----
+## 4. Decisions and limits
 
-## 4. Decisions and limits you should know
+- **Reports are group-local.** Only that group's admin sees them; there is no platform-wide
+  moderation queue. If the admin is the abuser, a member can block them, but nobody above the
+  admin reviews the report.
+- **Blocking hides chat only.** It hides the blocked person's chat messages and previews from
+  the blocker. It does not remove them from the group, hide their shared-goal contributions,
+  or change what other members see. Admin removal is the stronger action.
+- **Removal history:** current RSVP and venue votes are cleared; past chat and shared-goal
+  contributions stay. This is deliberate so the plan does not claim someone is attending when
+  they have lost access.
+- **One shared goal at a time per group.** Finished goals are kept in history (up to eight in
+  the sheet). There is no second plan or second active activity yet.
+- **Solo groups** cannot reach a 100-point goal; the start form disables unreachable targets
+  and defaults to 50 points. A group whose membership shrinks can close the goal early.
+- **Polling, not realtime.** Messages, plan, goal and blocks refresh every two seconds while
+  the tab is visible. Fine for a handful of testers; sockets would be the next step.
+- **One admin per group**, no ownership transfer, no password reset, no attachments or
+  notifications.
+- **Test data in this local database:** the e2e and visual checks created accounts such as
+  `VisualAda`, `VisualTunde`, `VisualGuest`, plus test groups. They live only in `.data/`.
+  They are harmless, but you can remove the whole local database with `npm run db:reset` if
+  you want a clean slate (this is local-only and deletes everything).
 
-**Deliberately not built** (per the brief's scope): email login, password reset, notifications,
-file uploads/attachments, payments, public group discovery, AI replies.
+## 5. What was not verified
 
-**Consequences of those choices:**
+- **Production deployment.** That depends on your Vercel/Neon accounts, so the deploy steps
+  above are untested by me. The build and all runtime checks pass locally.
+- **The seeded demo group on a brand-new database.** This development database already had a
+  claimed demo group, so the new seeded Night Market goal was not exercised here. The code is
+  typechecked, and a newly created group was used for every shared-goal e2e check. If you
+  reset a *scratch* database, the first account should see the demo group with the goal
+  already running; treat that as the one path that still needs a quick manual look.
+- **Long-running load.** The polling/e2e checks cover a handful of users, not dozens.
 
-- **No password reset** — if a tester forgets their password you'd have to create them a new
-  account. Fine for a handful of invited people; the first thing to add if this grows.
-- **Polling, not realtime** — messages appear within ~2 seconds. Great for a few testers; if
-  people complain about lag, the fix is server-sent events (or Durable Objects on Vercel).
-- **One admin per group, one plan per group** — no ownership transfer, and a group can't hold
-  a second event's plan yet. Both are natural next milestones.
-- **The first account in each database claims the demo group** — on a fresh production
-  database that will be you, which is what you want.
-
-**Operational notes:**
-
-- Local app = port 3000, local database = port 5433. If a previous run is still holding them,
-  `npm run dev` reuses them; if a start fails, check for an orphaned node process and kill it.
-- If weird data appears, `npm run db:reset` then `npm run dev` gives you a clean slate.
-- Chat rate limit: 20 messages/minute/person/group; 1000 characters max per message.
-
----
-
-## 5. Commands cheat-sheet
+## 6. Commands
 
 ```bash
 npm run dev        # local app + embedded database → localhost:3000
 npm run check      # typecheck + unit tests
-npm run test:e2e   # 32-check acceptance run (needs the dev server running)
+npm run test:e2e   # 73-check acceptance run (needs the dev server running)
 npm run build      # production build
-npm run db:reset   # wipe local data
+npm run db:reset   # LOCAL ONLY: wipe the embedded database
 ```
 
-Full documentation lives in [`README.md`](README.md); the security details are in its
-"Authentication" section.
-
-**Bottom line:** your only real work is steps B1–B5 (git → Neon → Vercel → `DATABASE_URL`).
-Everything the app does has already been verified locally, end to end.
+Full documentation is in [`README.md`](README.md). The bottom line: your only required work
+is redeploying the existing Vercel project (no new env vars) and, optionally, a quick look at
+the seeded demo path on a scratch database.

@@ -1,10 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Avatar, AvatarStack } from './Avatar';
-import { ArrowRight, Plus, Users } from './icons';
-import type { GroupSummary } from '@/lib/types';
+import { ArrowRight, Compass, Plus, Users } from './icons';
+import type { GroupSummary, GroupVisibility } from '@/lib/types';
 import { formatEventChip } from '@/lib/format';
 
 type Props = {
@@ -20,8 +20,29 @@ export function GroupsScreen({ user, initialGroups }: Props) {
   const [panel, setPanel] = useState<Panel>(initialGroups.length === 0 ? 'create' : null);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [visibility, setVisibility] = useState<GroupVisibility>('invite');
+  const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // The server render can be stale after a code rotation or a join in another
+  // tab. Refreshing here keeps every card's invite code tied to its own group.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const response = await fetch('/api/groups', { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = (await response.json()) as { groups?: GroupSummary[] };
+        if (alive && Array.isArray(data.groups)) setGroups(data.groups);
+      } catch {
+        // Keep the server-rendered list; the next navigation will retry.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function createGroup(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,7 +52,11 @@ export function GroupsScreen({ user, initialGroups }: Props) {
       const response = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          visibility,
+          description: visibility === 'discoverable' ? description : '',
+        }),
       });
       const data = (await response.json().catch(() => ({}))) as { groupId?: string; error?: string };
       if (!response.ok || !data.groupId) {
@@ -110,8 +135,7 @@ export function GroupsScreen({ user, initialGroups }: Props) {
             </span>
             <h3>No group yet</h3>
             <p>
-              Start one for your owambe, or paste the code someone sent you. Groups stay private to the
-              people inside.
+              Start one for your people, paste a code someone sent you, or find a community in Explore.
             </p>
           </div>
         ) : (
@@ -142,7 +166,13 @@ export function GroupsScreen({ user, initialGroups }: Props) {
                       ) : (
                         <span className="pill pill--muted">No date yet</span>
                       )}
+                      {group.visibility === 'discoverable' ? (
+                        <span className="pill pill--muted">Explore</span>
+                      ) : null}
                       {group.role === 'admin' ? <span className="pill pill--accent">Admin</span> : null}
+                      <span className="group-row__code" title="Invite code for this group">
+                        {group.inviteCode}
+                      </span>
                     </span>
                   </span>
                   <ArrowRight size={18} className="group-row__chevron" />
@@ -186,6 +216,16 @@ export function GroupsScreen({ user, initialGroups }: Props) {
               <span className="action-card__hint">Eight characters, no approval</span>
             </span>
           </button>
+
+          <button type="button" className="action-card" onClick={() => router.push('/explore')}>
+            <span className="action-card__icon">
+              <Compass size={18} />
+            </span>
+            <span>
+              <span className="action-card__title">Explore communities</span>
+              <span className="action-card__hint">Open groups looking for people</span>
+            </span>
+          </button>
         </div>
 
         {panel === 'create' ? (
@@ -201,6 +241,47 @@ export function GroupsScreen({ user, initialGroups }: Props) {
                 required
               />
             </label>
+
+            <div className="field">
+              <span className="field__label">Who can join?</span>
+              <div className="seg" role="group" aria-label="Who can join">
+                <button
+                  type="button"
+                  className={`seg__btn${visibility === 'invite' ? ' is-active' : ''}`}
+                  aria-pressed={visibility === 'invite'}
+                  onClick={() => setVisibility('invite')}
+                >
+                  Invite only
+                </button>
+                <button
+                  type="button"
+                  className={`seg__btn${visibility === 'discoverable' ? ' is-active' : ''}`}
+                  aria-pressed={visibility === 'discoverable'}
+                  onClick={() => setVisibility('discoverable')}
+                >
+                  Discoverable
+                </button>
+              </div>
+              <p className="micro">
+                {visibility === 'invite'
+                  ? 'Only people with the code or link can join. This is the default.'
+                  : 'Listed in Explore. Any signed-in player can join, so keep it friendly.'}
+              </p>
+            </div>
+
+            {visibility === 'discoverable' ? (
+              <label className="field">
+                <span className="field__label">Short description</span>
+                <input
+                  className="field__input"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="What is this community for?"
+                  maxLength={140}
+                />
+              </label>
+            ) : null}
+
             <button className="btn btn--ink btn--block" type="submit" disabled={busy}>
               {busy ? 'Creating…' : 'Create group'}
             </button>
@@ -235,10 +316,10 @@ export function GroupsScreen({ user, initialGroups }: Props) {
         ) : null}
 
         <p className="micro micro--foot">
-          Invite-only by design: no public directory, no discovery, no strangers.
+          Private by default. Discoverable groups can be found in Explore, and the admin can switch
+          back to invite-only at any time.
         </p>
       </div>
     </div>
   );
 }
-

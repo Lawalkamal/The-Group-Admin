@@ -3,15 +3,31 @@ import { hashPassword, hashToken, newSessionToken, verifyPassword } from '../lib
 import { INVITE_CODE_LENGTH, generateInviteCode, INVITE_ALPHABET_PATTERN } from '../lib/ids';
 import { mergeMessages, type LocalMessage } from '../lib/messages';
 import {
+  checkActivityGoal,
+  checkActivityNote,
   checkEventDate,
+  checkGroupDescription,
   checkGroupName,
   checkInviteCode,
   checkMessageBody,
   checkPassword,
+  checkReportReason,
   checkRsvp,
   checkUsername,
   checkVenueName,
+  checkVisibility,
 } from '../lib/validate';
+import {
+  CHEER_POINTS,
+  SHARED_GOAL_SCENARIOS,
+  computeProgress,
+  findScenario,
+  findScenarioAction,
+  outcomeFor,
+  spotlightAction,
+  topCrewMember,
+} from '../lib/activities';
+import type { SharedGoalCrewMember } from '../lib/types';
 import { dayKey, toLocalInput, truncate } from '../lib/format';
 
 describe('password hashing', () => {
@@ -201,6 +217,102 @@ describe('chat merging', () => {
     const failed: LocalMessage = { ...base, seq: Number.MAX_SAFE_INTEGER, id: 'local-2', body: 'x', failed: true };
     const merged = mergeMessages([failed], []);
     expect(merged[0].failed).toBe(true);
+  });
+});
+
+describe('community and activity validation', () => {
+  it('defaults nothing and accepts only the two visibilities', () => {
+    expect(checkVisibility('invite')).toEqual({ ok: true, value: 'invite' });
+    expect(checkVisibility('discoverable')).toEqual({ ok: true, value: 'discoverable' });
+    expect(checkVisibility('public').ok).toBe(false);
+    expect(checkVisibility(null).ok).toBe(false);
+  });
+
+  it('caps group descriptions', () => {
+    expect(checkGroupDescription('  A group for the crew  ')).toEqual({
+      ok: true,
+      value: 'A group for the crew',
+    });
+    expect(checkGroupDescription('a'.repeat(141)).ok).toBe(false);
+  });
+
+  it('accepts only known report reasons', () => {
+    expect(checkReportReason('harassment').ok).toBe(true);
+    expect(checkReportReason('spam').ok).toBe(true);
+    expect(checkReportReason('hate').ok).toBe(true);
+    expect(checkReportReason('other').ok).toBe(true);
+    expect(checkReportReason('because').ok).toBe(false);
+  });
+
+  it('keeps goals inside a sane range', () => {
+    expect(checkActivityGoal(100)).toEqual({ ok: true, value: 100 });
+    expect(checkActivityGoal('50')).toEqual({ ok: true, value: 50 });
+    expect(checkActivityGoal(49).ok).toBe(false);
+    expect(checkActivityGoal(501).ok).toBe(false);
+    expect(checkActivityGoal(100.5).ok).toBe(false);
+  });
+
+  it('caps activity notes', () => {
+    expect(checkActivityNote('  found the corner  ')).toEqual({ ok: true, value: 'found the corner' });
+    expect(checkActivityNote('a'.repeat(141)).ok).toBe(false);
+  });
+});
+
+describe('shared goal scenarios', () => {
+  it('has unique scenarios and actions with positive points', () => {
+    const scenarioIds = new Set<string>();
+    for (const scenario of SHARED_GOAL_SCENARIOS) {
+      expect(scenarioIds.has(scenario.id)).toBe(false);
+      scenarioIds.add(scenario.id);
+      expect(scenario.actions.length).toBeGreaterThanOrEqual(3);
+      const actionIds = new Set<string>();
+      for (const action of scenario.actions) {
+        expect(actionIds.has(action.id)).toBe(false);
+        actionIds.add(action.id);
+        expect(action.points).toBeGreaterThan(0);
+        expect(action.label.length).toBeGreaterThan(3);
+      }
+      expect(scenario.outcome.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('finds scenarios and actions, and rejects made-up ids', () => {
+    expect(findScenario('night_market')?.title).toBe('Night Market Takeover');
+    expect(findScenario('not-real')).toBeNull();
+    expect(findScenarioAction('night_market', 'cook')?.points).toBe(20);
+    expect(findScenarioAction('night_market', 'teleport')).toBeNull();
+  });
+
+  it('counts contribution points plus cheer momentum', () => {
+    expect(computeProgress([{ points: 20 }, { points: 15 }], 2)).toBe(35 + 2 * CHEER_POINTS);
+    expect(computeProgress([], 0)).toBe(0);
+    expect(CHEER_POINTS).toBeGreaterThan(0);
+  });
+
+  it('picks a stable spotlight action from the most cheers', () => {
+    const scenario = findScenario('night_market');
+    expect(spotlightAction(scenario, [])).toBeNull();
+    expect(spotlightAction(scenario, [{ actionId: 'sign' }, { actionId: 'cook' }, { actionId: 'cook' }])).toBe(
+      'cook',
+    );
+    // A tie falls back to the scenario order instead of flickering.
+    expect(spotlightAction(scenario, [{ actionId: 'rally' }, { actionId: 'cook' }])).toBe('cook');
+  });
+
+  it('names the top contributor and writes a short outcome', () => {
+    const crew: SharedGoalCrewMember[] = [
+      { userId: 'a', username: 'Amara', points: 20, moves: 1, cheerActionId: null, isMember: true },
+      { userId: 'b', username: 'Bode', points: 35, moves: 2, cheerActionId: 'cook', isMember: true },
+    ];
+    const top = topCrewMember(crew);
+    expect(top?.username).toBe('Bode');
+    const scenario = findScenario('night_market');
+    if (scenario && top) {
+      const outcome = outcomeFor(scenario, top);
+      expect(outcome).toContain(scenario.outcome);
+      expect(outcome).toContain('Bode');
+      expect(outcome).toContain('35 points');
+    }
   });
 });
 

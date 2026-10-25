@@ -5,7 +5,7 @@ import { PhoneFrame } from '@/components/PhoneFrame';
 
 export const metadata: Metadata = {
   title: 'The Group Admin',
-  description: 'A private group chat for planning the owambe — invite-only, built for testing.',
+  description: 'Private communities for real conversations, party plans, and shared goals.',
   applicationName: 'The Group Admin',
 };
 

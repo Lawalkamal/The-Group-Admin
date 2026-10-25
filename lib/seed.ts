@@ -144,6 +144,59 @@ export async function seedDemoGroupFor(owner: User): Promise<string | null> {
       ]);
     }
 
+    // A ready-made shared goal so the new activity is visible on a fresh
+    // database. Existing databases are never reseeded.
+    const activityId = newId();
+    const activityAt = new Date(Date.now() - 95 * 60_000).toISOString();
+    await d.query(
+      `insert into activities (id, group_id, kind, scenario, title, goal, status, created_by, created_at)
+       values ($1, $2, 'shared_goal', 'night_market', 'Night Market Takeover', 100, 'active', $3, $4)`,
+      [activityId, groupId, people.get('MamaRonke'), activityAt],
+    );
+
+    const activityMoves: Array<{ username: string; action: string; points: number; note: string }> = [
+      {
+        username: 'MamaRonke',
+        action: 'scout',
+        points: 15,
+        note: 'Found the corner beside the pepper stall. Good traffic.',
+      },
+      {
+        username: 'NgoziO',
+        action: 'cook',
+        points: 20,
+        note: 'Test batch finished. Nobody complained, which is suspicious.',
+      },
+      {
+        username: 'BlessingA',
+        action: 'sign',
+        points: 10,
+        note: 'The sign is loud. You will see it from the road.',
+      },
+    ];
+    for (const [index, move] of activityMoves.entries()) {
+      await d.query(
+        `insert into activity_contributions (id, activity_id, user_id, action_id, points, note, created_at)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          newId(),
+          activityId,
+          people.get(move.username),
+          move.action,
+          move.points,
+          move.note,
+          new Date(Date.now() - (92 - index * 3) * 60_000).toISOString(),
+        ],
+      );
+    }
+    for (const username of ['TundeDJ', 'UncleFemi']) {
+      await d.query(
+        `insert into activity_cheers (activity_id, user_id, action_id)
+         values ($1, $2, 'rally')`,
+        [activityId, people.get(username)],
+      );
+    }
+
     const script: Array<{ from: string | null; body: string; minutesAgo: number }> = [
       { from: null, body: 'Mama Ronke started the group.', minutesAgo: 190 },
       { from: 'MamaRonke', body: 'Good evening everybody. We have 21 days. I have said it, I will say it again: this party must not disgrace us.', minutesAgo: 188 },
@@ -155,6 +208,16 @@ export async function seedDemoGroupFor(owner: User): Promise<string | null> {
       { from: 'BlessingA', body: 'Voted for Surulere. It is free and we can make noise until 3am.', minutesAgo: 143 },
       { from: 'NgoziO', body: 'A party is not a reason to lose ₦800k on a hall. Look at the numbers first.', minutesAgo: 130 },
       { from: 'UncleFemi', body: 'If it is Surulere, I am controlling the gate myself.', minutesAgo: 118 },
+      {
+        from: null,
+        body: 'Mama Ronke started a shared goal: Night Market Takeover (100 points).',
+        minutesAgo: 95,
+      },
+      {
+        from: 'MamaRonke',
+        body: 'I have started a small goal for the night market. Add your bit when you can — points only, no money involved.',
+        minutesAgo: 90,
+      },
     ];
 
     for (const line of script) {

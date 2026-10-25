@@ -27,8 +27,14 @@ export const SCHEMA_STATEMENTS: string[] = [
     name text not null,
     owner_id text references users(id) on delete set null,
     invite_code text not null unique,
+    visibility text not null default 'invite',
+    description text not null default '',
     created_at timestamptz not null default now()
   )`,
+  // Additive columns for databases created before communities could be discovered.
+  `alter table groups add column if not exists visibility text not null default 'invite'`,
+  `alter table groups add column if not exists description text not null default ''`,
+  `create index if not exists groups_visibility_idx on groups (visibility, created_at desc)`,
 
   `create table if not exists memberships (
     group_id text not null references groups(id) on delete cascade,
@@ -83,6 +89,69 @@ export const SCHEMA_STATEMENTS: string[] = [
     status text not null,
     updated_at timestamptz not null default now(),
     primary key (group_id, user_id)
+  )`,
+
+  // ---- shared goal (fictional activity) ----
+
+  `create table if not exists activities (
+    id text primary key,
+    group_id text not null references groups(id) on delete cascade,
+    kind text not null default 'shared_goal',
+    scenario text not null,
+    title text not null,
+    goal integer not null,
+    status text not null default 'active',
+    created_by text references users(id) on delete set null,
+    created_at timestamptz not null default now(),
+    completed_at timestamptz,
+    final_progress integer not null default 0,
+    outcome text not null default ''
+  )`,
+  `create index if not exists activities_group_idx on activities (group_id, created_at desc)`,
+  // At most one running activity per group; finished ones move to history.
+  `create unique index if not exists activities_one_active_idx on activities (group_id) where status = 'active'`,
+
+  `create table if not exists activity_contributions (
+    id text primary key,
+    activity_id text not null references activities(id) on delete cascade,
+    user_id text not null references users(id) on delete cascade,
+    action_id text not null,
+    points integer not null,
+    note text not null default '',
+    created_at timestamptz not null default now(),
+    unique (activity_id, user_id, action_id)
+  )`,
+  `create index if not exists activity_contributions_activity_idx on activity_contributions (activity_id, created_at desc)`,
+
+  `create table if not exists activity_cheers (
+    activity_id text not null references activities(id) on delete cascade,
+    user_id text not null references users(id) on delete cascade,
+    action_id text not null,
+    created_at timestamptz not null default now(),
+    primary key (activity_id, user_id)
+  )`,
+
+  // ---- community safety ----
+
+  `create table if not exists reports (
+    id text primary key,
+    group_id text not null references groups(id) on delete cascade,
+    reporter_id text not null references users(id) on delete cascade,
+    target_id text not null references users(id) on delete cascade,
+    reason text not null,
+    note text not null default '',
+    created_at timestamptz not null default now(),
+    resolved_at timestamptz,
+    resolved_by text references users(id) on delete set null,
+    unique (group_id, reporter_id, target_id)
+  )`,
+  `create index if not exists reports_group_idx on reports (group_id, created_at desc)`,
+
+  `create table if not exists blocks (
+    blocker_id text not null references users(id) on delete cascade,
+    blocked_id text not null references users(id) on delete cascade,
+    created_at timestamptz not null default now(),
+    primary key (blocker_id, blocked_id)
   )`,
 
   `create table if not exists login_attempts (

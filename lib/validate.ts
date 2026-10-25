@@ -78,6 +78,51 @@ export function checkInviteCode(raw: unknown): Checked<string> {
   return ok(value);
 }
 
+export const GROUP_VISIBILITIES = ['invite', 'discoverable'] as const;
+export type GroupVisibilityValue = (typeof GROUP_VISIBILITIES)[number];
+
+export function checkVisibility(raw: unknown): Checked<GroupVisibilityValue> {
+  if (typeof raw === 'string' && (GROUP_VISIBILITIES as readonly string[]).includes(raw)) {
+    return ok(raw as GroupVisibilityValue);
+  }
+  return bad('Choose invite-only or discoverable.');
+}
+
+export function checkGroupDescription(raw: unknown): Checked<string> {
+  const value = squash(raw);
+  if (value.length > 140) return bad('Descriptions stop at 140 characters.');
+  return ok(value);
+}
+
+export const REPORT_REASONS = [
+  { value: 'harassment', label: 'Harassment' },
+  { value: 'spam', label: 'Spam' },
+  { value: 'hate', label: 'Hate speech' },
+  { value: 'other', label: 'Something else' },
+] as const;
+export type ReportReasonValue = (typeof REPORT_REASONS)[number]['value'];
+
+export function checkReportReason(raw: unknown): Checked<ReportReasonValue> {
+  if (typeof raw === 'string' && REPORT_REASONS.some((reason) => reason.value === raw)) {
+    return ok(raw as ReportReasonValue);
+  }
+  return bad('Pick a reason for the report.');
+}
+
+export function checkActivityGoal(raw: unknown): Checked<number> {
+  const value = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isInteger(value) || value < 50 || value > 500) {
+    return bad('Pick a goal between 50 and 500 points.');
+  }
+  return ok(value);
+}
+
+export function checkActivityNote(raw: unknown): Checked<string> {
+  const value = squash(raw);
+  if (value.length > 140) return bad('Notes stop at 140 characters.');
+  return ok(value);
+}
+
 export const RSVP_STATUSES = ['yes', 'maybe', 'no'] as const;
 export type RsvpStatus = (typeof RSVP_STATUSES)[number];
 

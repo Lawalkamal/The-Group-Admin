@@ -66,14 +66,14 @@ export function AuthScreen({ code, groupName, initialMode = 'signin' }: Props) {
         ) : null}
 
         <h1 className="display">
-          One chat.
+          One group.
           <br />
-          One plan.
+          Many plans.
           <br />
           <span className="display__accent">No confusion.</span>
         </h1>
         <p className="lede">
-          A private group for the owambe: who is coming, which hall wins, and who is holding the money.
+          A private space for your people: talk, plan the owambe, or start a shared goal together.
         </p>
 
         <form className="auth-form" onSubmit={submit} noValidate>

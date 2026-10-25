@@ -105,3 +105,49 @@ export function Pin({ size = 14, className }: IconProps) {
     </svg>
   );
 }
+
+export function Compass({ size = 20, className }: IconProps) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M15.2 8.8l-1.9 4.5-4.5 1.9 1.9-4.5 4.5-1.9z" />
+    </svg>
+  );
+}
+
+export function Spark({ size = 18, className }: IconProps) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8L12 3.5z" />
+      <path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z" />
+    </svg>
+  );
+}
+
+export function Flag({ size = 16, className }: IconProps) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M5.5 21V4.5" />
+      <path d="M5.5 4.5h10l-1.8 3.6 1.8 3.6h-10" />
+    </svg>
+  );
+}
+
+export function Shield({ size = 16, className }: IconProps) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 3.5l7 2.5v5.2c0 4.2-3 7.6-7 9.3-4-1.7-7-5.1-7-9.3V6l7-2.5z" />
+      <path d="M9.3 12l2 2 3.6-3.8" />
+    </svg>
+  );
+}
+
+export function More({ size = 16, className }: IconProps) {
+  return (
+    <svg {...base(size)} className={className} strokeWidth={2.2}>
+      <circle cx="6" cy="12" r="0.8" fill="currentColor" />
+      <circle cx="12" cy="12" r="0.8" fill="currentColor" />
+      <circle cx="18" cy="12" r="0.8" fill="currentColor" />
+    </svg>
+  );
+}
